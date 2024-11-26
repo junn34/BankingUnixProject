@@ -5,23 +5,30 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <time.h>
-#include "include/banking.h"
 
-#define DATA_DIR "data"
+#define SOCKET_PATH "banking_socket"
+#define MAX_NAME_LEN 50
+#define MAX_PASS_LEN 20
+#define BUFFER_SIZE 256
+
+typedef struct {
+    char name[MAX_NAME_LEN];
+    char account_number[20];
+    char password[MAX_PASS_LEN];
+    double balance;
+} Account;
 
 void create_account(int client_fd);
 void deposit(int client_fd);
 void withdraw(int client_fd);
-void show_transactions(int client_fd);
-char *current_time();
-int authenticate(const char *account_file, const char *password);
-void log_transaction(const char *account_file, const char *operation, double amount, double balance);
+void transaction_history(int client_fd);
+void log_transaction(const char *filename, const char *operation, double amount, double balance);
+void send_message(int client_fd, const char *message);
 
 int main() {
     int server_fd, client_fd;
     struct sockaddr_un addr;
 
-    // 소켓 초기화
     server_fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (server_fd == -1) {
         perror("Socket creation failed");
@@ -44,7 +51,6 @@ int main() {
 
     printf("Server is running...\n");
 
-    // 클라이언트 연결 처리
     while (1) {
         client_fd = accept(server_fd, NULL, NULL);
         if (client_fd == -1) {
@@ -55,12 +61,17 @@ int main() {
         printf("Client connected.\n");
 
         int choice;
-        read(client_fd, &choice, sizeof(choice));
+        if (read(client_fd, &choice, sizeof(choice)) <= 0) {
+            perror("Failed to read choice");
+            close(client_fd);
+            continue;
+        }
+
         switch (choice) {
             case 1: create_account(client_fd); break;
             case 2: deposit(client_fd); break;
             case 3: withdraw(client_fd); break;
-            case 4: show_transactions(client_fd); break;
+            case 4: transaction_history(client_fd); break;
             default: printf("Invalid option.\n"); break;
         }
 
@@ -75,179 +86,240 @@ int main() {
 void create_account(int client_fd) {
     Account account;
     char account_file[BUFFER_SIZE];
-    
+
     // 클라이언트에서 계좌 정보 읽기
     if (read(client_fd, &account, sizeof(Account)) <= 0) {
         perror("Error reading account data");
         return;
     }
 
-    // 파일 경로 설정 (현재 디렉터리에서 계좌번호.dat로 설정)
     snprintf(account_file, sizeof(account_file), "%s.dat", account.account_number);
 
-    // 파일 생성 및 쓰기
-    FILE *file = fopen(account_file, "wb");
+    FILE *file = fopen(account_file, "w");
     if (!file) {
         perror("Error creating account file");
         return;
     }
+
     account.balance = 0;
-    fwrite(&account, sizeof(Account), 1, file);
+    fprintf(file, "Name: %s\n", account.name);
+    fprintf(file, "Account Number: %s\n", account.account_number);
+    fprintf(file, "Password: %s\n", account.password);
+    fprintf(file, "Balance: %.2lf\n", account.balance);
     fclose(file);
 
     printf("Account created: %s\n", account_file);
+    log_transaction(account_file, "CREATE", 0, account.balance);
+    send_message(client_fd, "SUCCESS: Account created\n");
 }
-
 
 void deposit(int client_fd) {
     char account_number[20], name[MAX_NAME_LEN], password[MAX_PASS_LEN];
     double amount;
     char account_file[BUFFER_SIZE];
-
-    read(client_fd, account_number, sizeof(account_number));
-    snprintf(account_file, sizeof(account_file), "%s/%s.dat", DATA_DIR, account_number);
-
-    FILE *file = fopen(account_file, "rb+");
-    if (!file) {
-        perror("Account not found");
-        return;
-    }
-
     Account account;
-    fread(&account, sizeof(Account), 1, file);
 
-    // 사용자 확인
-    read(client_fd, name, sizeof(name));
-    if (strcmp(account.name, name) != 0) {
-        printf("Name mismatch.\n");
-        fclose(file);
+    // Account number 읽기
+    if (read(client_fd, account_number, sizeof(account_number)) <= 0) {
+        perror("Error reading account number");
+        send_message(client_fd, "ERROR: Failed to read account number\n");
         return;
     }
 
-    // 비밀번호 확인
-    read(client_fd, password, sizeof(password));
-    if (!authenticate(account_file, password)) {
-        printf("Authentication failed.\n");
-        fclose(file);
+    snprintf(account_file, sizeof(account_file), "%s.dat", account_number);
+
+    FILE *file = fopen(account_file, "r");
+    if (!file) {
+        perror("Error opening account file");
+        send_message(client_fd, "ERROR: Account file not found\n");
         return;
     }
 
-    // 입금 처리
-    read(client_fd, &amount, sizeof(amount));
-    account.balance += amount;
-
-    fseek(file, 0, SEEK_SET);
-    fwrite(&account, sizeof(Account), 1, file);
+    fscanf(file, "Name: %[^\n]\n", account.name);
+    fscanf(file, "Account Number: %[^\n]\n", account.account_number);
+    fscanf(file, "Password: %[^\n]\n", account.password);
+    fscanf(file, "Balance: %lf\n", &account.balance);
     fclose(file);
 
-    log_transaction(account_file, "DEPOSIT", amount, account.balance);
+    // Name 확인
+    if (read(client_fd, name, sizeof(name)) <= 0) {
+        perror("Error reading name");
+        send_message(client_fd, "ERROR: Failed to read name\n");
+        return;
+    }
 
-    printf("Deposit successful: %lf\n", amount);
+    if (strcmp(account.name, name) != 0) {
+        printf("Name mismatch: Expected %s, Got %s\n", account.name, name);
+        send_message(client_fd, "ERROR: Name mismatch\n");
+        return;
+    }
+
+    // Password 확인
+    if (read(client_fd, password, sizeof(password)) <= 0) {
+        perror("Error reading password");
+        send_message(client_fd, "ERROR: Failed to read password\n");
+        return;
+    }
+
+    if (strcmp(account.password, password) != 0) {
+        printf("Password mismatch.\n");
+        send_message(client_fd, "ERROR: Incorrect password\n");
+        return;
+    }
+
+    // Deposit 금액 읽기
+    if (read(client_fd, &amount, sizeof(amount)) <= 0) {
+        perror("Error reading deposit amount");
+        return;
+    }
+
+    account.balance += amount;
+
+    // 파일 업데이트
+    file = fopen(account_file, "w");
+    if (!file) {
+        perror("Error updating account file");
+        return;
+    }
+    fprintf(file, "Name: %s\n", account.name);
+    fprintf(file, "Account Number: %s\n", account.account_number);
+    fprintf(file, "Password: %s\n", account.password);
+    fprintf(file, "Balance: %.2lf\n", account.balance);
+    fclose(file);
+
+    printf("Deposit successful. New balance: %.2lf\n", account.balance);
+    log_transaction(account_file, "DEPOSIT", amount, account.balance);
+    send_message(client_fd, "SUCCESS: Deposit completed\n");
 }
 
 void withdraw(int client_fd) {
     char account_number[20], name[MAX_NAME_LEN], password[MAX_PASS_LEN];
     double amount;
     char account_file[BUFFER_SIZE];
-
-    read(client_fd, account_number, sizeof(account_number));
-    snprintf(account_file, sizeof(account_file), "%s/%s.dat", DATA_DIR, account_number);
-
-    FILE *file = fopen(account_file, "rb+");
-    if (!file) {
-        perror("Account not found");
-        return;
-    }
-
     Account account;
-    fread(&account, sizeof(Account), 1, file);
 
-    // 사용자 확인
-    read(client_fd, name, sizeof(name));
+    // Account number 읽기
+    if (read(client_fd, account_number, sizeof(account_number)) <= 0) {
+        perror("Error reading account number");
+        send_message(client_fd, "ERROR: Failed to read account number\n");
+        return;
+    }
+
+    snprintf(account_file, sizeof(account_file), "%s.dat", account_number);
+
+    FILE *file = fopen(account_file, "r");
+    if (!file) {
+        perror("Error opening account file");
+        send_message(client_fd, "ERROR: Account file not found\n");
+        return;
+    }
+
+    fscanf(file, "Name: %[^\n]\n", account.name);
+    fscanf(file, "Account Number: %[^\n]\n", account.account_number);
+    fscanf(file, "Password: %[^\n]\n", account.password);
+    fscanf(file, "Balance: %lf\n", &account.balance);
+    fclose(file);
+
+    // Name 확인
+    if (read(client_fd, name, sizeof(name)) <= 0) {
+        perror("Error reading name");
+        send_message(client_fd, "ERROR: Failed to read name\n");
+        return;
+    }
+
     if (strcmp(account.name, name) != 0) {
-        printf("Name mismatch.\n");
-        fclose(file);
+        printf("Name mismatch: Expected %s, Got %s\n", account.name, name);
+        send_message(client_fd, "ERROR: Name mismatch\n");
         return;
     }
 
-    // 비밀번호 확인
-    read(client_fd, password, sizeof(password));
-    if (!authenticate(account_file, password)) {
-        printf("Authentication failed.\n");
-        fclose(file);
+    // Password 확인
+    if (read(client_fd, password, sizeof(password)) <= 0) {
+        perror("Error reading password");
+        send_message(client_fd, "ERROR: Failed to read password\n");
         return;
     }
 
-    // 출금 처리
-    read(client_fd, &amount, sizeof(amount));
-    if (amount > account.balance) {
-        printf("Insufficient funds.\n");
-        fclose(file);
+    if (strcmp(account.password, password) != 0) {
+        printf("Password mismatch.\n");
+        send_message(client_fd, "ERROR: Incorrect password\n");
+        return;
+    }
+
+    // Withdraw 금액 읽기
+    if (read(client_fd, &amount, sizeof(amount)) <= 0) {
+        perror("Error reading withdraw amount");
+        return;
+    }
+
+    if (account.balance < amount) {
+        printf("Insufficient funds: Balance %.2lf, Withdraw %.2lf\n", account.balance, amount);
+        send_message(client_fd, "ERROR: Insufficient funds\n");
         return;
     }
 
     account.balance -= amount;
 
-    fseek(file, 0, SEEK_SET);
-    fwrite(&account, sizeof(Account), 1, file);
+    // 파일 업데이트
+    file = fopen(account_file, "w");
+    if (!file) {
+        perror("Error updating account file");
+        return;
+    }
+    fprintf(file, "Name: %s\n", account.name);
+    fprintf(file, "Account Number: %s\n", account.account_number);
+    fprintf(file, "Password: %s\n", account.password);
+    fprintf(file, "Balance: %.2lf\n", account.balance);
     fclose(file);
 
+    printf("Withdrawal successful. New balance: %.2lf\n", account.balance);
     log_transaction(account_file, "WITHDRAW", amount, account.balance);
-
-    printf("Withdrawal successful: %lf\n", amount);
+    send_message(client_fd, "SUCCESS: Withdrawal completed\n");
 }
 
-void show_transactions(int client_fd) {
-    char account_number[20], account_file[BUFFER_SIZE];
-    read(client_fd, account_number, sizeof(account_number));
+void transaction_history(int client_fd) {
+    char account_number[20], account_file[BUFFER_SIZE], line[BUFFER_SIZE];
 
-    snprintf(account_file, sizeof(account_file), "%s/%s.dat", DATA_DIR, account_number);
-    char log_file[BUFFER_SIZE];
-    snprintf(log_file, sizeof(log_file), "%s.log", account_file);
-
-    FILE *file = fopen(log_file, "r");
-    if (!file) {
-        perror("Transaction log not found");
+    if (read(client_fd, account_number, sizeof(account_number)) <= 0) {
+        perror("Error reading account number");
+        send_message(client_fd, "ERROR: Failed to read account number\n");
         return;
     }
 
-    char line[BUFFER_SIZE];
+    snprintf(account_file, sizeof(account_file), "%s.dat.log", account_number);
+
+    FILE *file = fopen(account_file, "r");
+    if (!file) {
+        perror("Error opening transaction log");
+        send_message(client_fd, "ERROR: Transaction log not found\n");
+        return;
+    }
+
     while (fgets(line, sizeof(line), file)) {
-        write(client_fd, line, strlen(line) + 1);
+        write(client_fd, line, strlen(line));
     }
     fclose(file);
+    write(client_fd, "END\n", 4); // End marker
 }
 
-char *current_time() {
-    time_t now = time(NULL);
-    char *time_str = malloc(30);
-    strftime(time_str, 30, "%Y-%m-%d %H:%M:%S", localtime(&now));
-    return time_str;
-}
-
-int authenticate(const char *account_file, const char *password) {
-    FILE *file = fopen(account_file, "rb");
-    if (!file) return 0;
-
-    Account account;
-    fread(&account, sizeof(Account), 1, file);
-    fclose(file);
-
-    return strcmp(account.password, password) == 0;
-}
-
-void log_transaction(const char *account_file, const char *operation, double amount, double balance) {
+void log_transaction(const char *filename, const char *operation, double amount, double balance) {
     char log_file[BUFFER_SIZE];
-    snprintf(log_file, sizeof(log_file), "%s.log", account_file);
+    snprintf(log_file, sizeof(log_file), "%s.log", filename);
 
     FILE *file = fopen(log_file, "a");
     if (!file) {
-        perror("Transaction log creation failed");
+        perror("Error creating transaction log");
         return;
     }
 
-    char *time_str = current_time();
+    time_t now = time(NULL);
+    char *time_str = ctime(&now);
+    time_str[strlen(time_str) - 1] = '\0'; // Remove newline
+
     fprintf(file, "%s | %s | %.2lf | %.2lf\n", time_str, operation, amount, balance);
     fclose(file);
-    free(time_str);
+}
+
+void send_message(int client_fd, const char *message) {
+    write(client_fd, message, strlen(message) + 1);
 }
