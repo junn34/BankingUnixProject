@@ -4,18 +4,29 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/un.h>
-#include "include/banking.h"
+
+#define SOCKET_PATH "banking_socket"
+#define MAX_NAME_LEN 50
+#define MAX_PASS_LEN 20
+#define BUFFER_SIZE 256
+
+typedef struct {
+    char name[MAX_NAME_LEN];
+    char account_number[20];
+    char password[MAX_PASS_LEN];
+    double balance;
+} Account;
 
 void create_account(int socket_fd);
 void deposit(int socket_fd);
 void withdraw(int socket_fd);
 void show_transactions(int socket_fd);
+void receive_message(int socket_fd);
 
 int main() {
     int client_fd;
     struct sockaddr_un addr;
 
-    // 소켓 초기화
     client_fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (client_fd == -1) {
         perror("Socket creation failed");
@@ -25,7 +36,6 @@ int main() {
     addr.sun_family = AF_UNIX;
     strcpy(addr.sun_path, SOCKET_PATH);
 
-    // 서버 연결
     if (connect(client_fd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
         perror("Connection to server failed");
         exit(1);
@@ -60,6 +70,7 @@ int main() {
 
 void create_account(int socket_fd) {
     Account account;
+
     printf("\n--- Create Account ---\n");
     printf("Enter your name: ");
     scanf("%s", account.name);
@@ -69,13 +80,11 @@ void create_account(int socket_fd) {
     scanf("%s", account.password);
 
     write(socket_fd, &account, sizeof(Account));
-    printf("Account created successfully!\n");
+    receive_message(socket_fd);
 }
 
 void deposit(int socket_fd) {
-    char account_number[20];
-    char name[MAX_NAME_LEN];
-    char password[MAX_PASS_LEN];
+    char account_number[20], name[MAX_NAME_LEN], password[MAX_PASS_LEN];
     double amount;
 
     printf("\n--- Deposit ---\n");
@@ -95,13 +104,11 @@ void deposit(int socket_fd) {
     scanf("%lf", &amount);
     write(socket_fd, &amount, sizeof(amount));
 
-    printf("Deposit completed successfully!\n");
+    receive_message(socket_fd);
 }
 
 void withdraw(int socket_fd) {
-    char account_number[20];
-    char name[MAX_NAME_LEN];
-    char password[MAX_PASS_LEN];
+    char account_number[20], name[MAX_NAME_LEN], password[MAX_PASS_LEN];
     double amount;
 
     printf("\n--- Withdraw ---\n");
@@ -121,12 +128,11 @@ void withdraw(int socket_fd) {
     scanf("%lf", &amount);
     write(socket_fd, &amount, sizeof(amount));
 
-    printf("Withdrawal completed successfully!\n");
+    receive_message(socket_fd);
 }
 
 void show_transactions(int socket_fd) {
-    char account_number[20];
-    char buffer[BUFFER_SIZE];
+    char account_number[20], buffer[BUFFER_SIZE];
 
     printf("\n--- Show Transactions ---\n");
     printf("Enter account number: ");
@@ -134,8 +140,20 @@ void show_transactions(int socket_fd) {
     write(socket_fd, account_number, sizeof(account_number));
 
     printf("\n--- Transaction Log ---\n");
-    while (read(socket_fd, buffer, sizeof(buffer)) > 0) {
+    while (1) {
+        if (read(socket_fd, buffer, sizeof(buffer)) <= 0) {
+            break;
+        }
+        if (strcmp(buffer, "END\n") == 0) {
+            break;
+        }
         printf("%s", buffer);
     }
-    printf("\n");
+}
+
+void receive_message(int socket_fd) {
+    char response[BUFFER_SIZE];
+    if (read(socket_fd, response, sizeof(response)) > 0) {
+        printf("%s\n", response);
+    }
 }
