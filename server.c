@@ -75,26 +75,29 @@ int main() {
 void create_account(int client_fd) {
     Account account;
     char account_file[BUFFER_SIZE];
-    read(client_fd, &account, sizeof(Account));
-
-    snprintf(account_file, sizeof(account_file), "%s/%s.dat", DATA_DIR, account.account_number);
-
-    FILE *file = fopen(account_file, "wb");
-    if (!file) {
-        perror("Account creation failed");
+    
+    // 클라이언트에서 계좌 정보 읽기
+    if (read(client_fd, &account, sizeof(Account)) <= 0) {
+        perror("Error reading account data");
         return;
     }
 
+    // 파일 경로 설정 (현재 디렉터리에서 계좌번호.dat로 설정)
+    snprintf(account_file, sizeof(account_file), "%s.dat", account.account_number);
+
+    // 파일 생성 및 쓰기
+    FILE *file = fopen(account_file, "wb");
+    if (!file) {
+        perror("Error creating account file");
+        return;
+    }
     account.balance = 0;
     fwrite(&account, sizeof(Account), 1, file);
     fclose(file);
 
-    char *time_str = current_time();
-    log_transaction(account_file, "CREATE", 0, account.balance);
-    free(time_str);
-
-    printf("Account created: %s\n", account.account_number);
+    printf("Account created: %s\n", account_file);
 }
+
 
 void deposit(int client_fd) {
     char account_number[20], name[MAX_NAME_LEN], password[MAX_PASS_LEN];
