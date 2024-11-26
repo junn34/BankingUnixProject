@@ -13,6 +13,7 @@ void withdraw(int socket_fd);
 void show_transactions(int socket_fd);
 void receive_message(int socket_fd);
 
+
 int main() {
     int client_fd;
     struct sockaddr_un addr;
@@ -32,7 +33,7 @@ int main() {
     }
 
     int choice;
-    do {
+    while (1) {
         printf("\n==== Banking System ====\n");
         printf("1. Create Account\n");
         printf("2. Deposit\n");
@@ -42,17 +43,24 @@ int main() {
         printf("Enter your choice: ");
         scanf("%d", &choice);
 
-        write(client_fd, &choice, sizeof(choice));
+        if (write(client_fd, &choice, sizeof(choice)) <= 0) {
+            perror("Failed to send choice to server");
+            break;
+        }
 
         switch (choice) {
             case 1: create_account(client_fd); break;
             case 2: deposit(client_fd); break;
             case 3: withdraw(client_fd); break;
             case 4: show_transactions(client_fd); break;
-            case 5: printf("Exiting...\n"); break;
-            default: printf("Invalid choice. Try again.\n");
+            case 5:
+                printf("Exiting...\n");
+                close(client_fd);
+                exit(0);
+            default:
+                printf("Invalid choice. Try again.\n");
         }
-    } while (choice != 5);
+    }
 
     close(client_fd);
     return 0;
