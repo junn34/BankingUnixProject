@@ -14,6 +14,7 @@ void withdraw(int client_fd);
 void transaction_history(int client_fd);
 void log_transaction(const char *filename, const char *operation, double amount, double balance);
 void send_message(int client_fd, const char *message);
+
 int main() {
     int server_fd, client_fd;
     struct sockaddr_un addr;
@@ -49,28 +50,27 @@ int main() {
 
         printf("Client connected.\n");
 
-        int choice;
-        if (read(client_fd, &choice, sizeof(choice)) <= 0) {
-            perror("Failed to read choice");
-            close(client_fd);
-            continue;
-        }
-
-        switch (choice) {
-            case 1: create_account(client_fd); break;
-            case 2: deposit(client_fd); break;
-            case 3: withdraw(client_fd); break;
-            case 4: transaction_history(client_fd); break;
-            case 5:
-                printf("Client requested exit.\n");
-                close(client_fd);
-                continue; // 다른 클라이언트 요청을 처리하기 위해 루프 유지
-            default:
-                printf("Invalid option received: %d\n", choice);
+        while (1) {
+            int choice;
+            if (read(client_fd, &choice, sizeof(choice)) <= 0) {
+                printf("Client disconnected.\n");
                 break;
-        }
+            }
 
-        close(client_fd);
+            switch (choice) {
+                case 1: create_account(client_fd); break;
+                case 2: deposit(client_fd); break;
+                case 3: withdraw(client_fd); break;
+                case 4: transaction_history(client_fd); break;
+                case 5:
+                    printf("Client requested exit.\n");
+                    close(client_fd);
+                    break;  // 내부 루프를 빠져나옴
+                default:
+                    printf("Invalid option received: %d\n", choice);
+                    break;
+            }
+        }
     }
 
     close(server_fd);
