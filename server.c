@@ -89,7 +89,7 @@ void create_account(int client_fd) {
         return;
     }
 
-    snprintf(account_file, sizeof(account_file), "%s.dat", account.account_number);
+    snprintf(account_file, sizeof(account_file), "%s.dat", account.account_number); // 현재 디렉터리에 [계좌번호].dat 생성
 
     FILE *file = fopen(account_file, "w");
     if (!file) {
@@ -137,26 +137,26 @@ void deposit(int client_fd) {
     fscanf(file, "Balance: %lf\n", &account.balance);
     fclose(file);
 
-    // Name 확인
+    
     if (read(client_fd, name, sizeof(name)) <= 0) {
         perror("Error reading name");
         send_message(client_fd, "ERROR: Failed to read name\n");
         return;
     }
-
+    //사용자가 입력한 이름과 계좌의 소유주 이름과 동일한지 확인
     if (strcmp(account.name, name) != 0) {
         printf("Name mismatch: Expected %s, Got %s\n", account.name, name);
         send_message(client_fd, "ERROR: Name mismatch\n");
         return;
     }
 
-    // Password 확인
+    
     if (read(client_fd, password, sizeof(password)) <= 0) {
         perror("Error reading password");
         send_message(client_fd, "ERROR: Failed to read password\n");
         return;
     }
-
+    // 사용자가 입력한 Password와 계좌의 비밀번호가 동일한지 확인
     if (strcmp(account.password, password) != 0) {
         printf("Password mismatch.\n");
         send_message(client_fd, "ERROR: Incorrect password\n");
@@ -188,6 +188,7 @@ void deposit(int client_fd) {
     send_message(client_fd, "SUCCESS: Deposit completed\n");
 }
 
+//출금 기능
 void withdraw(int client_fd) {
     char account_number[20], name[MAX_NAME_LEN], password[MAX_PASS_LEN];
     double amount;
@@ -311,7 +312,7 @@ void log_transaction(const char *filename, const char *operation, double amount,
     time_t now = time(NULL);
     char *time_str = ctime(&now);
     time_str[strlen(time_str) - 1] = '\0'; // Remove newline
-
+    fprinf("
     fprintf(file, "%s | %s | %.2lf | %.2lf\n", time_str, operation, amount, balance);
     fclose(file);
 }
