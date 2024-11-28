@@ -312,7 +312,7 @@ void log_transaction(const char *filename, const char *operation, double amount,
     time_t now = time(NULL);
     char *time_str = ctime(&now);
     time_str[strlen(time_str) - 1] = '\0'; // Remove newline
-    fprinf("
+    
     fprintf(file, "%s | %s | %.2lf | %.2lf\n", time_str, operation, amount, balance);
     fclose(file);
 }
