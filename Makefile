@@ -1,13 +1,14 @@
+#Makefile
 CC = gcc
 CFLAGS = -Wall -g
 TARGETS = server client
 
 all: $(TARGETS)
 
-server: server.c include/banking.h
+server: server.c banking.h
 	$(CC) $(CFLAGS) -o server server.c
 
-client: client.c include/banking.h
+client: client.c banking.h
 	$(CC) $(CFLAGS) -o client client.c
 
 clean:
@@ -15,4 +16,3 @@ clean:
 	rm -rf data/*.dat
 
 .PHONY: all clean
-
