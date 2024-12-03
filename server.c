@@ -181,7 +181,9 @@ void deposit(int client_fd) {
     fclose(file);
 
     log_transaction(account.account_number, "DEPOSIT", amount, account.balance);
-    send_message(client_fd, "입금 완료.");
+    char message[BUFFER_SIZE];
+    snprintf(message, sizeof(message), "입금이 완료되었습니다. 현재 잔액: %.2lf", account.balance);
+    send_message(client_fd, message);
 }
 //출금 함수
 void withdraw(int client_fd) {
@@ -254,7 +256,9 @@ void withdraw(int client_fd) {
     fclose(file);
     //로그 파일 업데이트
     log_transaction(account.account_number, "WITHDRAW", amount, account.balance);
-    send_message(client_fd, "출금 완료.");
+    char message[BUFFER_SIZE];
+    snprintf(message, sizeof(message), "출금이 완료되었습니다. 현재 잔액: %.2lf", account.balance);
+    send_message(client_fd,message);
 }
 //거래 내역 함수
 void transaction_history(int client_fd) {
