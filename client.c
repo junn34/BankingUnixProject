@@ -6,7 +6,7 @@
 #include <sys/un.h>
 #include "banking.h"
 
-
+// 함수 선언
 void create_account(int socket_fd);
 void deposit(int socket_fd);
 void withdraw(int socket_fd);
@@ -28,37 +28,47 @@ int main() {
 
     if (connect(client_fd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
         perror("서버 연결 실패");
+        close(client_fd);
         exit(1);
     }
 
     int choice;
-    do {
-        printf("\n==== 환영합니다 ====\n");
+    while (1) {
+        printf("\n==== 은행 시스템 ====\n");
         printf("1. 계좌 생성\n");
         printf("2. 입금\n");
         printf("3. 출금\n");
         printf("4. 거래 내역 확인\n");
-        printf("5. 종료\n");
-        printf("사용하실 기능의 번호를 입력하세요.: ");
+        printf("5. 프로그램 종료\n");
+        printf("번호를 선택하세요: ");
         scanf("%d", &choice);
 
-        if(write(client_fd, &choice, sizeof(choice))<=0){
-		perror("서버에 기능의 번호 전송이 실패했습니다.");
-		break;
-	}
+        if (write(client_fd, &choice, sizeof(choice)) <= 0) {
+            perror("서버에 기능 번호 전송 실패");
+            break;
+        }
 
         switch (choice) {
-            case 1: create_account(client_fd); break;
-            case 2: deposit(client_fd); break;
-            case 3: withdraw(client_fd); break;
-            case 4: show_transactions(client_fd); break;
-            case 5:  
-		printf("종료 중...\n"); 
-		close(client_fd);
-		exit(0);
-            default: printf("유효하지 않은 기능입니다. 다시 시도해주세요.\n");
+            case 1:
+                create_account(client_fd);
+                break;
+            case 2:
+                deposit(client_fd);
+                break;
+            case 3:
+                withdraw(client_fd);
+                break;
+            case 4:
+                show_transactions(client_fd);
+                break;
+            case 5:
+                printf("프로그램을 종료합니다.\n");
+                close(client_fd);
+                exit(0); // 종료
+            default:
+                printf("잘못된 입력입니다. 다시 시도하세요.\n");
         }
-    } while (choice != 5);
+    }
 
     close(client_fd);
     return 0;
@@ -68,15 +78,19 @@ void create_account(int socket_fd) {
     Account account;
 
     printf("\n--- 계좌 생성 ---\n");
-    printf("이름을 입력해주세요.: ");
+    printf("이름을 입력하세요: ");
     scanf("%s", account.name);
-    printf("계좌 번호를 입력해주세요.: ");
+    printf("계좌 번호를 입력하세요: ");
     scanf("%s", account.account_number);
-    printf("비밀 번호를 입력해주세요.: ");
+    printf("비밀번호를 입력하세요: ");
     scanf("%s", account.password);
 
-    write(socket_fd, &account, sizeof(Account));
-    receive_message(socket_fd);
+    if (write(socket_fd, &account, sizeof(Account)) <= 0) {
+        perror("계좌 정보 전송 실패");
+        return;
+    }
+
+    receive_message(socket_fd); // 서버 응답 수신
 }
 
 void deposit(int socket_fd) {
@@ -84,23 +98,35 @@ void deposit(int socket_fd) {
     double amount;
 
     printf("\n--- 입금 ---\n");
-    printf("계좌 번호를 입력해 주세요.: ");
+    printf("계좌 번호를 입력하세요: ");
     scanf("%s", account_number);
-    write(socket_fd, account_number, sizeof(account_number));
+    if (write(socket_fd, account_number, sizeof(account_number)) <= 0) {
+        perror("계좌 번호 전송 실패");
+        return;
+    }
 
-    printf("계좌 생성 당시에 사용하신 이름을 입력해 주세요.: ");
+    printf("계좌 생성 당시 이름을 입력하세요: ");
     scanf("%s", name);
-    write(socket_fd, name, sizeof(name));
+    if (write(socket_fd, name, sizeof(name)) <= 0) {
+        perror("이름 전송 실패");
+        return;
+    }
 
-    printf("비밀 번호를 입력해주세요.: ");
+    printf("비밀번호를 입력하세요: ");
     scanf("%s", password);
-    write(socket_fd, password, sizeof(password));
+    if (write(socket_fd, password, sizeof(password)) <= 0) {
+        perror("비밀번호 전송 실패");
+        return;
+    }
 
-    printf("맡기실 금액을 입력해주세요.: ");
+    printf("입금 금액을 입력하세요: ");
     scanf("%lf", &amount);
-    write(socket_fd, &amount, sizeof(amount));
+    if (write(socket_fd, &amount, sizeof(amount)) <= 0) {
+        perror("입금 금액 전송 실패");
+        return;
+    }
 
-    receive_message(socket_fd);
+    receive_message(socket_fd); // 서버 응답 수신
 }
 
 void withdraw(int socket_fd) {
@@ -108,50 +134,74 @@ void withdraw(int socket_fd) {
     double amount;
 
     printf("\n--- 출금 ---\n");
-    printf("계좌 번호를 입력해주세요.: ");
+    printf("계좌 번호를 입력하세요: ");
     scanf("%s", account_number);
-    write(socket_fd, account_number, sizeof(account_number));
+    if (write(socket_fd, account_number, sizeof(account_number)) <= 0) {
+        perror("계좌 번호 전송 실패");
+        return;
+    }
 
-    printf("계좌 생성 당시에 사용하신 이름을 입력해 주세요.: ");
+    printf("계좌 생성 당시 이름을 입력하세요: ");
     scanf("%s", name);
-    write(socket_fd, name, sizeof(name));
+    if (write(socket_fd, name, sizeof(name)) <= 0) {
+        perror("이름 전송 실패");
+        return;
+    }
 
-    printf("비밀 번호를 입력해주세요: ");
+    printf("비밀번호를 입력하세요: ");
     scanf("%s", password);
-    write(socket_fd, password, sizeof(password));
+    if (write(socket_fd, password, sizeof(password)) <= 0) {
+        perror("비밀번호 전송 실패");
+        return;
+    }
 
-    printf("찾으실 금액을 입력해주세요.: ");
+    printf("출금 금액을 입력하세요: ");
     scanf("%lf", &amount);
-    write(socket_fd, &amount, sizeof(amount));
+    if (write(socket_fd, &amount, sizeof(amount)) <= 0) {
+        perror("출금 금액 전송 실패");
+        return;
+    }
 
-    receive_message(socket_fd);
+    receive_message(socket_fd); // 서버 응답 수신
 }
 
 void show_transactions(int socket_fd) {
-    char account_number[20], buffer[BUFFER_SIZE];
+    char account_number[20], password[MAX_PASS_LEN], buffer[BUFFER_SIZE];
     int read_data;
-    printf("\n--- 거래내역 확인  ---\n");
-    printf("계좌 번호를 입력해주세요.: ");
+
+    printf("\n--- 거래 내역 확인 ---\n");
+    printf("계좌 번호를 입력하세요: ");
     scanf("%s", account_number);
-    if (write(socket_fd, account_number, sizeof(account_number))<=0){
-	perror("계좌 번호 전송 실패");
-	return;
+
+    printf("비밀번호를 입력하세요: ");
+    scanf("%s", password);
+
+    if (write(socket_fd, account_number, sizeof(account_number)) <= 0) {
+        perror("계좌 번호 전송 실패");
+        return;
     }
+
+    if (write(socket_fd, password, sizeof(password)) <= 0) {
+        perror("비밀번호 전송 실패");
+        return;
+    }
+
     printf("\n--- 거래 내역 ---\n");
     while (1) {
-	read_data = read(socket_fd, buffer, sizeof(buffer)-1);
-        if (read_data<= 0) {
-       	    perror("거래 내역 읽기 오류");
-	    break;
+        read_data = read(socket_fd, buffer, sizeof(buffer) - 1);
+        if (read_data <= 0) {
+            break;
         }
-	buffer[read_data] = '\0';
+
+        buffer[read_data] = '\0'; // NULL 종료
         if (strcmp(buffer, "END\n") == 0) {
-            printf("\n--- 거래 내역 끝 ---\n");
+            printf("--- 거래 내역 끝 ---\n");
             break;
         }
         printf("%s", buffer);
     }
-    printf("\n메뉴로 돌아갑니다.\n");
+
+    printf("\n거래 내역 확인 완료.\n");
 }
 
 void receive_message(int socket_fd) {
@@ -160,3 +210,4 @@ void receive_message(int socket_fd) {
         printf("%s\n", response);
     }
 }
+
