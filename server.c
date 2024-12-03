@@ -165,6 +165,11 @@ void deposit(int client_fd) {
         send_message(client_fd, "ERROR: 입금 금액 읽기 실패.\n");
         return;
     }
+    // 금액이 0원 미만인지 확인
+    if (amount <= 0) {
+        send_message(client_fd, "ERROR: 입금 금액은 0보다 커야 합니다.\n");
+        return;
+    }
     //잔액 업데이트
     account.balance += amount;
    //계좌 파일 업데이트
@@ -235,7 +240,12 @@ void withdraw(int client_fd) {
         send_message(client_fd, "ERROR: 출금 금액 읽기 실패.\n");
         return;
     }
-
+    //출금 금액 0원 미만인지 확인
+    if (amount <= 0) {
+        send_message(client_fd, "ERROR: 출금 금액은 0보다 커야 합니다.\n");
+        return;
+    }
+    //출금 가능 여부 확인
     if (account.balance < amount) {
         send_message(client_fd, "ERROR: 잔액 부족.\n");
         return;
